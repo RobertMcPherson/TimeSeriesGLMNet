@@ -25,7 +25,7 @@ This analysis examines changes in Gemini's book of business over time, and searc
 
 rm(list=ls())
 
-#setwd("C:/Users/rmcpherson/Documents/Segments/Phil Welt Segment/Gemini")
+setwd("C:/Users/rmcpherson/Documents/Code/Crypto/TimeSeriesGLMNet/")
 
 library(sqldf) #for running sql on data frames
 #library(dummies) #for creating one-hot encoding
@@ -55,7 +55,7 @@ dependent.variable <- "market.price"
 ##########################
 #Set the maximum lag for adjusting the variables in the data.
 #each variable will get a new column for each lag, up to the maximum set here.
-maxlag <- 30
+maxlag <- 130
 ##########################
 
 ##########################
@@ -139,11 +139,14 @@ x <- SeriesData
 
 head(x)
 
-#scale the dependent variable
-x.scaled <- scale(x)
+#scale the independent variables
+#x.scaled <- scale(x)
 
 #Isolate dependent variable values, based on name given in global variable inputs above
 y <- SeriesData[,dependent.variable]
+
+#take the log of the dependent variable
+y <- log(y)
 
 #scale the dependent variable
 y.scaled <- scale(y)
@@ -155,13 +158,22 @@ rownames(SeriesData)
 #offset.p.scaled <- scale(offset.p)
 
 #save time increment vector
-#time.increments <- unique(raw_data_dummies[,time.increment.variable])
 #time.increments <- time.increments[sort.list(time.increments, decreasing=FALSE)]
+time.increments <- x[,time.increment.variable]
 
-#save column names
+#omit the first column, which is the time increment variable
+x <- x[,-1]
+
+#omit the last column, which is the dependent variable
+x <- x[,-length(x)]
+
+#take the log of the independent variables
+#x <- log(x)
+
+#save column names, omitting the first column, which is the time increment variable
 x.colnames <- data.frame(colnames(x))
 
-detach(SeriesData)
+#detach(SeriesData)
 
 ```
 ##ARIMA Time Series Analysis
@@ -177,7 +189,7 @@ num.cols <- length(x[1,])
 #generate ARIMA plots...intent is to get ARIMA parameters, rather than forecasts
 x.arima.residuals = NULL
 for (i in 1:num.cols){
-  fit <- auto.arima(x.scaled[,i])
+  fit <- auto.arima(x[,i])
   if(include.arima.plots == TRUE){
   par(mar=c(8,4,2,2))
   plot(forecast(fit,h=maxlag), sub=paste(x.colnames[i,]))
@@ -195,12 +207,14 @@ par(mar=c(8,4,2,2))
 plot(forecast(fit,h=1), sub=paste(dependent.variable, sep=""))
 y.arima.residuals <- resid(fit)
 
-#run arima transformation on the offset variable
-fit=NULL
-fit <- auto.arima(offset.p.scaled)
-par(mar=c(8,4,2,2))
-plot(forecast(fit,h=1), sub=paste(offset.variable,sep=""))
-offset.arima.residuals <- resid(fit)
+if(include.offset==TRUE){
+  #run arima transformation on the offset variable
+  fit=NULL
+  fit <- auto.arima(offset.p.scaled)
+  par(mar=c(8,4,2,2))
+  plot(forecast(fit,h=1), sub=paste(offset.variable,sep=""))
+  offset.arima.residuals <- resid(fit)
+}
 
 #create a standardized, scaled, and normalized version of the data
 #?scale
@@ -214,7 +228,7 @@ offset.arima.residuals <- resid(fit)
 ```{r}
 if(include.QQ.plots == TRUE){
 #check distributions of independent variables for normality
-  for (i in 1:length(x.scaled[1,])){
+  for (i in 1:length(x[1,])){
     qqnorm(x.arima.residuals[,i], main=paste(x.colnames[i,]))
   }
 }  
@@ -231,7 +245,11 @@ if(include.QQ.plots == TRUE){
 
 This step is to perform cross correlation analysis to see the effects of all the lags on the correlation.  The longest bar in the plot that extends above the dotted confidence interval line indicates the best lag.  In this data set, all of the best lags are indicated at zero.  In other words, if there is any relationship between the predictor variables and the target variable, claims in this case, the impact occurs within the year.  The results here echo the findings of the GLMNet regularized regression, which only selected predictor variables that had a zero lag.
 
+
 ```{r}
+
+write.csv(x=x.arima.residuals, file="x.arima.residuals.csv")
+write.csv(x=y.arima.residuals, file="y.arima.residuals.csv")
 
 ##cross correlation analysis
 #leading indicators in 'x' will have negative lag values for the most significant
@@ -402,6 +420,8 @@ plot(cvfitlm.prewhitened)
 
 #get the coefficients
 cvfitlm.coef.lambda.1se.prewhitened <- coef(cvfitlm.prewhitened, s = "lambda.1se")
+#cvfitlm.coef.lambda.1se.prewhitened <- coef(cvfitlm.prewhitened, s = 4.8)
+#cvfitlm.coef.lambda.1se.prewhitened <- coef(cvfitlm.prewhitened, s = "lambda.min")
 
 #add the column names to the coefficient list
 #first, must add a row for the y-intercept value in the column names list
@@ -419,7 +439,9 @@ kable(sorted.coefficients.prewhitened, caption="Coefficients on pre-whitened, sc
 #use the model results from the pre-whitened data to select the variables to use in the forecast
 coef.indices.lambda.1se.prewhitened <- which(cvfitlm.coef.lambda.1se.prewhitened[,"Coefficient"] != 0)
 selected.indices <- coef.indices.lambda.1se.prewhitened[-1] #-1 is to omit the y-intercept variable
+
 x.selected <- x_new[,selected.indices]
+#x.selected <- x_new
 #x_new_colnames[selected.indices] #as a test
 
 ```
