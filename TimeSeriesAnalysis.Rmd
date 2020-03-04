@@ -9,7 +9,7 @@ output:
   word_document: default
 ---
 
-This analysis examines changes in Gemini's book of business over time, and searches for leading indicators of losses.
+This analysis searches for leading indicators of Bitcoin price performance.
 
 
 ```{r install_libraries, echo=FALSE, results='hide', message=FALSE, warning=FALSE}
